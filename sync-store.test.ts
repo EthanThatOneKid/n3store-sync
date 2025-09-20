@@ -70,7 +70,7 @@ Deno.test("SPARQL INSERT DATA - Basic", async () => {
 Deno.test("SPARQL DELETE DATA", async () => {
   const { store, eventCounts } = createMonitoredStore();
 
-  // First insert data.
+  // First, we insert the initial data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -83,7 +83,7 @@ Deno.test("SPARQL DELETE DATA", async () => {
     { sources: [store] },
   );
 
-  // Then delete specific data.
+  // Then, we delete specific data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      
@@ -105,7 +105,7 @@ Deno.test("SPARQL DELETE DATA", async () => {
 Deno.test("SPARQL INSERT/DELETE with WHERE", async () => {
   const { store, eventCounts } = createMonitoredStore();
 
-  // Insert initial data.
+  // We insert the initial data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -121,7 +121,7 @@ Deno.test("SPARQL INSERT/DELETE with WHERE", async () => {
     { sources: [store] },
   );
 
-  // Delete all persons with age > 28.
+  // We delete all persons with age greater than 28.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -149,7 +149,7 @@ Deno.test("SPARQL INSERT/DELETE with WHERE", async () => {
 Deno.test("SPARQL DELETE with pattern matching", async () => {
   const { store, eventCounts } = createMonitoredStore();
 
-  // Insert test data.
+  // We insert the test data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -168,7 +168,7 @@ Deno.test("SPARQL DELETE with pattern matching", async () => {
     { sources: [store] },
   );
 
-  // Delete all age properties.
+  // We delete all age properties.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      
@@ -192,7 +192,7 @@ Deno.test("SPARQL DELETE with pattern matching", async () => {
 Deno.test("SPARQL Mixed INSERT and DELETE", async () => {
   const { store, eventCounts } = createMonitoredStore();
 
-  // Insert initial data.
+  // We insert the initial data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -205,7 +205,7 @@ Deno.test("SPARQL Mixed INSERT and DELETE", async () => {
     { sources: [store] },
   );
 
-  // Mixed update: change age and add email.
+  // We perform a mixed update: change age and add email.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      
@@ -263,7 +263,7 @@ Deno.test("SPARQL INSERT with different graphs", async () => {
 Deno.test("SPARQL DELETE WHERE without pattern", async () => {
   const { store, eventCounts } = createMonitoredStore();
 
-  // Insert test data.
+  // We insert the test data.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -279,7 +279,7 @@ Deno.test("SPARQL DELETE WHERE without pattern", async () => {
     { sources: [store] },
   );
 
-  // Delete all quads using DELETE WHERE.
+  // We delete all quads using DELETE WHERE.
   await queryEngine.queryVoid(
     `PREFIX ex: <http://example.org/>
      
@@ -321,6 +321,288 @@ Deno.test("SPARQL INSERT with blank nodes", async () => {
   assertEquals(eventCounts.removeMatches, 0);
   assertEquals(eventCounts.deleteGraph, 0);
   assertEquals(store.size, 5);
+});
+
+Deno.test("SPARQL INSERT with RDF collections", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:hobbies ( "reading" "swimming" "cooking" ) .
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 9);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 9);
+});
+
+Deno.test("SPARQL INSERT with language tags and datatypes", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John"@en ;
+                  ex:name "Jean"@fr ;
+                  ex:age 30 ;
+                  ex:height 1.75 ;
+                  ex:birthDate "1990-01-01" .
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 6);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 6);
+});
+
+Deno.test("SPARQL INSERT with simple property paths", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  // We insert some data.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane" .
+       ex:person1 ex:knows ex:person2 .
+     }`,
+    { sources: [store] },
+  );
+
+  // We perform a simple update without property paths.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     INSERT {
+       ?person ex:updated true .
+     }
+     WHERE {
+       ?person rdf:type ex:Person ;
+               ex:name ?name .
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 7);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 7);
+});
+
+Deno.test("SPARQL INSERT with UNION patterns", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" .
+       ex:person2 rdf:type ex:Employee ;
+                  ex:name "Jane" .
+     }`,
+    { sources: [store] },
+  );
+
+  // We use UNION to find both Person and Employee types.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT {
+       ?person ex:processed true .
+     }
+     WHERE {
+       {
+         ?person rdf:type ex:Person ;
+                 ex:name ?name .
+       } UNION {
+         ?person rdf:type ex:Employee ;
+                 ex:name ?name .
+       }
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 6);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 6);
+});
+
+Deno.test("SPARQL INSERT with OPTIONAL patterns", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  // We insert some data with optional properties.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:email "john@example.com" .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane" .
+     }`,
+    { sources: [store] },
+  );
+
+  // We use OPTIONAL to conditionally add missing email.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     INSERT {
+       ?person ex:email "unknown@example.com" .
+     }
+     WHERE {
+       ?person rdf:type ex:Person ;
+               ex:name ?name .
+       OPTIONAL {
+         ?person ex:email ?email .
+       }
+       FILTER(!BOUND(?email))
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 6);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 6);
+});
+
+Deno.test("SPARQL INSERT with FILTER expressions", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  // We insert the test data.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:age 25 .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane" ;
+                  ex:age 35 .
+       ex:person3 rdf:type ex:Person ;
+                  ex:name "Bob" ;
+                  ex:age 45 .
+     }`,
+    { sources: [store] },
+  );
+
+  // We use FILTER to conditionally update based on age.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     DELETE {
+       ?person ex:age ?age .
+     }
+     INSERT {
+       ?person ex:age ?newAge ;
+                ex:category ?category .
+     }
+     WHERE {
+       ?person rdf:type ex:Person ;
+               ex:name ?name ;
+               ex:age ?age .
+       BIND(?age + 1 AS ?newAge)
+       BIND(IF(?age < 30, "young", IF(?age < 40, "middle-aged", "senior")) AS ?category)
+       FILTER(?age >= 30)
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 13);
+  assertEquals(eventCounts.removeQuad, 2);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 11);
+});
+
+Deno.test("SPARQL INSERT with MINUS patterns", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  // We insert the test data.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:status "active" .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane" .
+       ex:person3 rdf:type ex:Person ;
+                  ex:name "Bob" ;
+                  ex:status "inactive" .
+     }`,
+    { sources: [store] },
+  );
+
+  // We use MINUS to exclude people with status.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     INSERT {
+       ?person ex:processed true .
+     }
+     WHERE {
+       ?person rdf:type ex:Person ;
+               ex:name ?name .
+       MINUS {
+         ?person ex:status ?status .
+       }
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 9);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 9);
 });
 
 Deno.test("Direct method calls", async (t) => {
