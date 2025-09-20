@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { QueryEngine } from "@comunica/query-sparql";
+import type { Quad } from "n3";
 import { DataFactory } from "n3";
 import { SyncStore, SyncStoreEvent } from "./sync-store.ts";
 
@@ -482,4 +483,87 @@ Deno.test("Direct method calls", async (t) => {
     assertEquals(eventCounts.removeMatches, 1);
     assertEquals(eventCounts.deleteGraph, 1);
   });
+});
+
+Deno.test("Track quads by subject IRI", async () => {
+  const { store } = createMonitoredStore();
+
+  // External tracking map that stores subject IRI to quad count mappings.
+  const subjectQuadCounts = new Map<string, number>();
+
+  // Helper function that updates subject counts based on quad changes.
+  function updateSubjectCounts(quads: Quad[], increment: number) {
+    for (const quad of quads) {
+      const subjectIri = quad.subject.value;
+      const currentCount = subjectQuadCounts.get(subjectIri) ?? 0;
+      subjectQuadCounts.set(subjectIri, currentCount + increment);
+    }
+  }
+
+  // Listen to ADD_QUAD events to track new quads being added.
+  store.addEventListener(SyncStoreEvent.ADD_QUAD, (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const quad = customEvent.detail[0] as Quad;
+    updateSubjectCounts([quad], 1);
+  });
+
+  // Listen to REMOVE_QUAD events to track individual quads being removed.
+  store.addEventListener(SyncStoreEvent.REMOVE_QUAD, (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const quad = customEvent.detail[0] as Quad;
+    updateSubjectCounts([quad], -1);
+  });
+
+  // Listen to REMOVE_MATCHES events to track bulk quad removals.
+  store.addEventListener(SyncStoreEvent.REMOVE_MATCHES, (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const quads = customEvent.detail as Quad[];
+    updateSubjectCounts(quads, -1);
+  });
+
+  // Listen to DELETE_GRAPH events to track graph deletions.
+  store.addEventListener(SyncStoreEvent.DELETE_GRAPH, (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const quads = customEvent.detail as Quad[];
+    updateSubjectCounts(quads, -1);
+  });
+
+  // Insert test data using SPARQL INSERT DATA.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John Doe" ;
+                  ex:age 30 .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane Smith" ;
+                  ex:age 25 .
+     }`,
+    { sources: [store] },
+  );
+
+  // Verify that subject counts are correct after data insertion.
+  assertEquals(subjectQuadCounts.get("http://example.org/person1"), 3);
+  assertEquals(subjectQuadCounts.get("http://example.org/person2"), 3);
+  assertEquals(subjectQuadCounts.size, 2);
+
+  // Delete one quad for person1 using SPARQL DELETE DATA.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     DELETE DATA {
+       ex:person1 ex:age 30 .
+     }`,
+    { sources: [store] },
+  );
+
+  // Verify that subject counts are correct after data deletion.
+  assertEquals(subjectQuadCounts.get("http://example.org/person1"), 2);
+  assertEquals(subjectQuadCounts.get("http://example.org/person2"), 3);
+  assertEquals(subjectQuadCounts.size, 2);
+
+  // Verify that the store size matches our external tracking.
+  assertEquals(store.size, 5);
 });
