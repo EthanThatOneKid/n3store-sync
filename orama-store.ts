@@ -8,6 +8,7 @@ import {
   type Orama,
   remove,
   search,
+  type SearchParams,
 } from "@orama/orama";
 import { SyncStore, SyncStoreEvent } from "./sync-store.ts";
 
@@ -22,7 +23,29 @@ const oramaSchema = {
   objectValue: "string", // The actual value for literals
   objectLanguage: "string", // Language tag for literals
   objectDatatype: "string", // Datatype for literals
+  // Vector search fields
+  subjectEmbedding: "vector[384]", // Embedding for subject (using 384-dimensional vectors)
+  predicateEmbedding: "vector[384]", // Embedding for predicate
+  objectEmbedding: "vector[384]", // Embedding for object
+  combinedEmbedding: "vector[384]", // Combined embedding for the entire quad
 } as const;
+
+// Simple mock embedding function that generates deterministic vectors based on text
+function generateMockEmbedding(text: string): number[] {
+  // Create a simple hash-based embedding for demonstration
+  const hash = text.split("").reduce((a, b) => {
+    a = ((a << 5) - a) + b.charCodeAt(0);
+    return a & a;
+  }, 0);
+
+  // Generate 384-dimensional vector based on hash
+  const embedding = new Array(384).fill(0);
+  for (let i = 0; i < 384; i++) {
+    embedding[i] = Math.sin(hash + i) * 0.5;
+  }
+
+  return embedding;
+}
 
 // We create a helper function to convert RDF quads to Orama documents.
 function quadToOramaDoc(quad: Quad, id: string) {
@@ -37,6 +60,16 @@ function quadToOramaDoc(quad: Quad, id: string) {
     objectDatatype = quad.object.datatype?.value ?? "";
   }
 
+  // Generate embeddings for each component
+  const subjectEmbedding = generateMockEmbedding(quad.subject.value);
+  const predicateEmbedding = generateMockEmbedding(quad.predicate.value);
+  const objectEmbedding = generateMockEmbedding(objectValue);
+
+  // Generate combined embedding for the entire quad
+  const quadText =
+    `${quad.subject.value} ${quad.predicate.value} ${objectValue}`;
+  const combinedEmbedding = generateMockEmbedding(quadText);
+
   return {
     id,
     subject: quad.subject.value,
@@ -47,6 +80,10 @@ function quadToOramaDoc(quad: Quad, id: string) {
     objectValue,
     objectLanguage,
     objectDatatype,
+    subjectEmbedding,
+    predicateEmbedding,
+    objectEmbedding,
+    combinedEmbedding,
   };
 }
 
@@ -153,7 +190,7 @@ export class OramaStore {
    * @param searchParams - The search parameters
    * @returns A promise that resolves to the search results
    */
-  async search(searchParams: any) {
+  async search(searchParams: SearchParams<Orama<typeof oramaSchema>>) {
     return await search(this.oramaDB, searchParams);
   }
 
@@ -224,5 +261,73 @@ export class OramaStore {
     for (const quad of quads) {
       this.syncStore.removeQuad(quad);
     }
+  }
+
+  /**
+   * Performs vector search on the Orama database.
+   * @param query - The search query text
+   * @param vectorProperty - The vector property to search on (default: 'combinedEmbedding')
+   * @param similarity - Minimum similarity threshold (default: 0.8)
+   * @param limit - Maximum number of results (default: 10)
+   * @returns A promise that resolves to the search results
+   */
+  async vectorSearch(
+    query: string,
+    vectorProperty: string = "combinedEmbedding",
+    similarity: number = 0.8,
+    limit: number = 10,
+  ) {
+    const queryEmbedding = generateMockEmbedding(query);
+    return await search(this.oramaDB, {
+      mode: "vector",
+      vector: {
+        value: queryEmbedding,
+        property: vectorProperty,
+      },
+      similarity,
+      limit,
+    });
+  }
+
+  /**
+   * Performs hybrid search combining full-text and vector search.
+   * @param query - The search query text
+   * @param vectorProperty - The vector property to search on (default: 'combinedEmbedding')
+   * @param similarity - Minimum vector similarity threshold (default: 0.8)
+   * @param limit - Maximum number of results (default: 10)
+   * @param hybridWeights - Weights for text vs vector search (default: {text: 0.5, vector: 0.5})
+   * @returns A promise that resolves to the search results
+   */
+  async hybridSearch(
+    query: string,
+    vectorProperty: string = "combinedEmbedding",
+    similarity: number = 0.8,
+    limit: number = 10,
+    hybridWeights: { text: number; vector: number } = {
+      text: 0.5,
+      vector: 0.5,
+    },
+  ) {
+    const queryEmbedding = generateMockEmbedding(query);
+    return await search(this.oramaDB, {
+      mode: "hybrid",
+      term: query,
+      vector: {
+        value: queryEmbedding,
+        property: vectorProperty,
+      },
+      similarity,
+      limit,
+      hybridWeights,
+    });
+  }
+
+  /**
+   * Generates an embedding for the given text using the same method as stored documents.
+   * @param text - The text to embed
+   * @returns The embedding vector
+   */
+  generateEmbedding(text: string): number[] {
+    return generateMockEmbedding(text);
   }
 }
