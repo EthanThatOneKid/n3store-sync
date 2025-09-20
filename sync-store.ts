@@ -1,5 +1,5 @@
 // @deno-types="@types/n3"
-import { Store } from "n3";
+import { OTerm, Store } from "n3";
 import type { EventEmitter } from "node:events";
 
 /**
@@ -16,7 +16,15 @@ export enum SyncStoreEvent {
  * SyncStore extends the N3 Store class with events.
  */
 export class SyncStore extends Store {
-  public target = new EventTarget();
+  private target = new EventTarget();
+
+  public addEventListener(
+    event: SyncStoreEvent,
+    listener: Parameters<EventTarget["addEventListener"]>[1],
+    options?: Parameters<EventTarget["addEventListener"]>[2],
+  ): void {
+    this.target.addEventListener(event, listener, options);
+  }
 
   public override addQuad(...args: Parameters<Store["addQuad"]>): boolean {
     const result = super.addQuad(...args);
@@ -63,20 +71,46 @@ export class SyncStore extends Store {
   public override removeMatches(
     ...args: Parameters<Store["removeMatches"]>
   ): EventEmitter {
-    const result = super.removeMatches(...args);
-    this.target.dispatchEvent(
-      new CustomEvent(SyncStoreEvent.REMOVE_QUADS, { detail: args }),
+    const quadsToRemove = this.getQuads(
+      args[0] as OTerm,
+      args[1] as OTerm,
+      args[2] as OTerm,
+      args[3] as OTerm,
     );
+    if (!(quadsToRemove.length > 0)) {
+      throw new Error("Invalid quads");
+    }
+    const result = super.removeMatches(...args);
+    if (quadsToRemove.length > 0) {
+      this.target.dispatchEvent(
+        new CustomEvent(SyncStoreEvent.REMOVE_QUADS, { detail: quadsToRemove }),
+      );
+    }
+
     return result;
   }
 
   public override deleteGraph(
     ...args: Parameters<Store["deleteGraph"]>
   ): EventEmitter {
-    const result = super.deleteGraph(...args);
-    this.target.dispatchEvent(
-      new CustomEvent(SyncStoreEvent.REMOVE_QUADS, { detail: args }),
+    // First, get all quads in the graph that will be deleted
+    const quadsToRemove = this.getQuads(
+      null, // any subject
+      null, // any predicate
+      null, // any object
+      args[0] as OTerm, // specific graph
     );
+
+    // Then perform the actual deletion
+    const result = super.deleteGraph(...args);
+
+    // Dispatch event with the actual quads that were removed
+    if (quadsToRemove.length > 0) {
+      this.target.dispatchEvent(
+        new CustomEvent(SyncStoreEvent.REMOVE_QUADS, { detail: quadsToRemove }),
+      );
+    }
+
     return result;
   }
 }
