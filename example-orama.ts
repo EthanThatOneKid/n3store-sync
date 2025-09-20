@@ -16,20 +16,44 @@
 import { QueryEngine } from "@comunica/query-sparql";
 import { OramaStore } from "./orama-store.ts";
 
+// Define the document structure for Orama search results
+interface OramaDocument {
+  id: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  graph: string;
+  objectType: string;
+  objectValue: string;
+  objectLanguage: string;
+  objectDatatype: string;
+}
+
+interface SearchHit {
+  score: number;
+  document: OramaDocument;
+}
+
+interface SearchResults {
+  count: number;
+  hits: SearchHit[];
+}
+
 const queryEngine = new QueryEngine();
 
 /**
  * Helper function to safely execute search operations with error handling
  */
 async function safeSearch(
-  searchFn: () => Promise<any>,
+  searchFn: () => Promise<SearchResults>,
   operation: string,
   query: string,
 ) {
   try {
     return await searchFn();
   } catch (error) {
-    console.error(`   ❌ Error in ${operation} for "${query}":`, error.message);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`   ❌ Error in ${operation} for "${query}":`, errorMessage);
     return { count: 0, hits: [] };
   }
 }
@@ -37,13 +61,13 @@ async function safeSearch(
 /**
  * Helper function to display search results in a consistent format
  */
-function displayResults(results: any, showType = false) {
+function displayResults(results: SearchResults, showType = false) {
   if (results.count === 0) {
     console.log("   No results found.");
     return;
   }
 
-  results.hits.forEach((hit: any, index: number) => {
+  results.hits.forEach((hit: SearchHit, index: number) => {
     const doc = hit.document;
     console.log(`   ${index + 1}. Score: ${hit.score.toFixed(3)}`);
     console.log(`      Subject: ${doc.subject}`);
@@ -332,9 +356,12 @@ async function main() {
         }...]`,
       );
     } catch (error) {
+      const errorMessage = error instanceof Error
+        ? error.message
+        : String(error);
       console.error(
         `   Error generating embedding for "${text}":`,
-        error.message,
+        errorMessage,
       );
     }
   }
