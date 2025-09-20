@@ -231,6 +231,98 @@ Deno.test("SPARQL Mixed INSERT and DELETE", async () => {
   assertEquals(store.size, 4);
 });
 
+Deno.test("SPARQL INSERT with different graphs", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       GRAPH ex:graph1 {
+         ex:person1 rdf:type ex:Person ;
+                    ex:name "John" .
+       }
+       GRAPH ex:graph2 {
+         ex:person2 rdf:type ex:Person ;
+                    ex:name "Jane" .
+       }
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 4);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 4);
+});
+
+Deno.test("SPARQL DELETE WHERE without pattern", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  // Insert test data.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:age 30 .
+       ex:person2 rdf:type ex:Person ;
+                  ex:name "Jane" ;
+                  ex:age 25 .
+     }`,
+    { sources: [store] },
+  );
+
+  // Delete all quads using DELETE WHERE.
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     
+     DELETE WHERE {
+       ?s ?p ?o .
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 6);
+  assertEquals(eventCounts.removeQuad, 6);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 0);
+});
+
+Deno.test("SPARQL INSERT with blank nodes", async () => {
+  const { store, eventCounts } = createMonitoredStore();
+
+  await queryEngine.queryVoid(
+    `PREFIX ex: <http://example.org/>
+     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+     
+     INSERT DATA {
+       ex:person1 rdf:type ex:Person ;
+                  ex:name "John" ;
+                  ex:address [ ex:street "123 Main St" ;
+                               ex:city "Anytown" ] .
+     }`,
+    { sources: [store] },
+  );
+
+  assertEquals(eventCounts.addQuad, 5);
+  assertEquals(eventCounts.removeQuad, 0);
+  assertEquals(eventCounts.addQuads, 0);
+  assertEquals(eventCounts.removeQuads, 0);
+  assertEquals(eventCounts.removeMatches, 0);
+  assertEquals(eventCounts.deleteGraph, 0);
+  assertEquals(store.size, 5);
+});
+
 Deno.test("Direct method calls", async (t) => {
   const subject = DataFactory.namedNode("http://example.org/person1");
   const predicate = DataFactory.namedNode(
